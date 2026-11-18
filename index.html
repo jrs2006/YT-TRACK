@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Basic Video Tracker</title>
+<style>
+:root{--ink:#1b2430;--muted:#6b7689;--line:#dfe4ec;--bg:#f5f7fa;--card:#fff;--accent:#2563eb;--good:#15803d;--bad:#b91c1c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+header{background:var(--card);border-bottom:1px solid var(--line);padding:12px 20px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:3}
+h1{font-size:18px;margin:0}
+nav button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none}
+nav button.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:12px 20px 60px}
+.tab{display:none}.tab.on{display:block}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-top:14px}
+h2{font-size:16px;margin:0 0 8px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 10px}
+button{font:inherit;padding:6px 12px;border:1px solid var(--line);background:#fff;border-radius:7px;cursor:pointer}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.4;cursor:default}
+input,select{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:#fff;max-width:100%}
+input[type=number]{width:110px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.kpi b{font-size:20px;display:block}
+.kpi span{color:var(--muted);font-size:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.box{border-radius:8px;padding:10px 12px;font-size:13px}
+.lack{background:#fff7ed;border:1px solid #fed7aa}
+.perf{background:#f0fdf4;border:1px solid #bbf7d0}
+table{width:100%;border-collapse:collapse}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600;margin-right:4px;white-space:nowrap}
+.p-lack{background:#ffedd5;color:#9a3412}.p-perf{background:#dcfce7;color:#166534}.p-ok{background:#e5e7eb;color:#374151}
+.vid{display:grid;grid-template-columns:96px 1fr auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+.vid img{width:96px;height:54px;object-fit:cover;border-radius:5px;background:#e5e7eb}
+.muted{color:var(--muted);font-size:12px}
+a{color:var(--accent)}
+.goal{margin:10px 0}.goal .hd{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.bg{height:12px;background:#e5e9f1;border-radius:20px;overflow:hidden;margin-top:4px}
+.fg{height:100%;background:linear-gradient(90deg,#60a5fa,#22c55e);border-radius:20px}
+details.cat{border-top:1px solid var(--line);padding:8px 0}
+details.cat summary{cursor:pointer;font-weight:600}
+.ok{color:var(--good)}.bad{color:var(--bad)}
+@media(max-width:800px){.kpis{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Basic Video Tracker</h1><div class="muted">Videos by category · monthly goals · monthly views</div></div>
+  <nav class="row">
+    <button data-tab="over" class="on" onclick="showTab('over')">Overview</button>
+    <button data-tab="mon" onclick="showTab('mon')">Monthly</button>
+    <button data-tab="set" onclick="showTab('set')">Settings</button>
+  </nav>
+</header>
+<main>
+
+<!-- OVERVIEW -->
+<div class="tab on" id="t-over">
+  <div class="kpis" id="kpis"></div>
+  <section>
+    <h2>Lacking and performing</h2>
+    <p class="sub">Lacking = views per video well above the category's share of videos (add more there). Performing = views per video at or above the channel average.</p>
+    <div class="two"><div class="box lack" id="lackBox"></div><div class="box perf" id="perfBox"></div></div>
+  </section>
+  <section>
+    <h2>Category scorecard</h2>
+    <div style="overflow-x:auto"><table id="score"></table></div>
+  </section>
+  <section>
+    <h2>Add a video</h2>
+    <div class="row">
+      <input id="vLink" placeholder="YouTube link (optional)" style="width:260px">
+      <input id="vTitle" placeholder="Video name" style="width:260px">
+      <select id="vCat"></select>
+      <input type="date" id="vDate">
+      <input type="number" id="vViews" placeholder="Views" style="width:110px">
+      <button class="primary" onclick="addVideo()">Add video</button>
+    </div>
+  </section>
+  <section>
+    <h2>Videos by category</h2>
+    <div id="sections"></div>
+  </section>
+</div>
+
+<!-- MONTHLY -->
+<div class="tab" id="t-mon">
+  <section>
+    <div class="row" style="justify-content:space-between">
+      <div class="row"><button onclick="moveMonth(-1)">‹ Prev</button><b id="monLabel" style="min-width:150px;text-align:center"></b><button onclick="moveMonth(1)">Next ›</button></div>
+      <label class="row">Month&nbsp;<input type="month" id="monPick" onchange="setMonth(this.value)"></label>
+    </div>
+    <div class="goal" id="monGoal"></div>
+  </section>
+  <section>
+    <h2>Categories this month</h2>
+    <p class="sub">"Published" counts videos dated in this month. Target = monthly goal × the category's share (or a set target in Settings). "Still needed" is what's left.</p>
+    <div style="overflow-x:auto"><table id="monCats"></table></div>
+  </section>
+  <section>
+    <h2>Monthly views per video</h2>
+    <p class="sub">Type each video's views at the end of the month. The change column compares with the previous month you entered.</p>
+    <div style="overflow-x:auto"><table id="monVids"></table></div>
+  </section>
+</div>
+
+<!-- SETTINGS -->
+<div class="tab" id="t-set">
+  <section>
+    <h2>Monthly goals</h2>
+    <p class="sub">Default goal applies to every month unless you set a different one for that month.</p>
+    <div class="row" style="margin-bottom:10px">
+      <label class="row">Default videos per month&nbsp;<input type="number" min="0" id="setDefault" onchange="setDefaultGoal(this.value)" style="width:110px"></label>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <label class="row">Goal for&nbsp;<input type="month" id="setMonth" onchange="renderSettings()"></label>
+      <label class="row">videos&nbsp;<input type="number" min="0" id="setMonthGoal" onchange="setMonthGoal(this.value)" style="width:110px"></label>
+      <button onclick="clearMonthGoal()">Use default for this month</button>
+    </div>
+    <h2 style="margin-top:14px">Category targets for that month (optional)</h2>
+    <p class="sub">Leave blank to use the automatic share of the monthly goal.</p>
+    <div style="overflow-x:auto"><table id="setCats"></table></div>
+  </section>
+  <section>
+    <h2>Cloud sync (Supabase)</h2>
+    <p class="sub">Same data on every device. Paste the Project URL and the anon public key once per device. The key is kept only in this browser.</p>
+    <div class="row" style="margin-bottom:8px">
+      <input id="cUrl" placeholder="https://abcd1234.supabase.co" style="width:300px">
+      <input id="cKey" type="password" placeholder="anon public key" style="width:300px">
+    </div>
+    <div class="row"><button class="primary" onclick="saveCloudConfig()">Connect and sync</button><button onclick="initCloud()">Sync now</button><button class="danger" onclick="disconnectCloud()">Disconnect</button></div>
+    <p class="muted" id="cloudMsg" style="margin-top:8px"></p>
+  </section>
+  <section>
+    <h2>Categories</h2>
+    <div class="row" style="margin-bottom:8px"><input id="newCat" placeholder="New category name" style="width:260px"><button onclick="addCat()">Add category</button></div>
+    <div id="catList"></div>
+  </section>
+</div>
+
+</main>
+
+<script>
+const KEY='basic-video-tracker-v1';
+const CATS=["Earth, geography & climate","Animals & evolution","Space & astronomy","Human evolution, biology & mind","Mystery & human stories","Science, discoveries & technology"];
+const ANCHOR='2026-11-18';
+// [video name, views as shown on the channel, age when listed, category index]
+const LISTING=[
+["യഥാർഥ നമ്മൾ ശരീരത്തിന് പുറത്താണോ ?","8.3k","15 hr ago",3],
+["കണ്ണും പൂട്ടി നടന്നാൽ എല്ലായിടത്തും എത്തുമോ | Randomness Explained","72k","5 days ago",5],
+["നീല നിറം ഒരു മായ ആണോ? | C V Raman Explained","29k","11 days ago",5],
+["പരിണാമം തെറ്റെന്നു ആണോ നമ്മുടെ രക്തം പറയുന്നത് ?","172k","2 wk ago",3],
+["എത്ര മഴ പെയ്താലും കൊടും വരൾച്ച വരുന്ന കാലമോ | Elnino Explained","126k","3 wk ago",0],
+["ചൊവ്വാ യാത്രയെ മനുഷ്യൻ പേടിക്കുന്നത് ഇത് കൊണ്ടാണ്","168k","1 mo ago",2],
+["കണ്ണടച്ചാലും നമുക്ക് ലോകം “കാണാൻ” കഴിയും | Spatial Intelligence Explained","126k","1 mo ago",3],
+["അറേബ്യയിൽ മാത്രം എന്തുകൊണ്ടാണ് ഇത്രയും എണ്ണ | Origin Of Petroleum","365k","1 mo ago",0],
+["100 വർഷത്തിന് ശേഷമുള്ള നമ്മൾ | Future Of Human Evolution","161k","1 mo ago",3],
+["ഡോഡോ പക്ഷികൾക്ക് എന്ത് സംഭവിച്ചു! കേട്ടതൊക്കെ സത്യമോ?","177k","2 mo ago",1],
+["100 വർഷങ്ങൾക്കു ശേഷം ഐൻസ്റ്റീൻ വീണ്ടും ശെരി എന്ന് തെളിഞ്ഞു !","177k","2 mo ago",5],
+["നമ്മൾ എത്ര ചെറുതാണെന്ന് നിങ്ങൾക്ക് സങ്കൽപ്പിക്കാൻ പോലും കഴിയില്ല","245k","2 mo ago",2],
+["നേപ്പാളിൽ സംഭവിച്ചതെന്ത്? Nepal Flood Explained","107k","2 mo ago",0],
+["ഭൂമിയിലെ നരക വളയവും ഭൂകമ്പങ്ങളും | Ring Of Fire Explained","178k","2 mo ago",0],
+["Science of Muscles Complexity | Explained in Malayalam","317k","2 mo ago",3],
+["Fundamentals of Space Explained in Malayalam","375k","2 mo ago",2],
+["ചരിത്രത്തിലെ വലിയ ക്രൂരത ചെയ്ത മൃഗസ്നേഹി..","175k","2 mo ago",4],
+["ഭൂമിക്കു പുറത്ത് ഉണ്ടായ ജീവൻ - Panspermia Hypothesis | Malayalam","95k","3 mo ago",2],
+["സ്വർണ്ണം ഉണ്ടായത് നക്ഷത്രങ്ങളിലല്ല? | The Mystery of Gold & Uranium | Malayalam","85k","3 mo ago",5],
+["Project Hail Mary: The Science vs Fiction Explained","119k","3 mo ago",2],
+["ഏലിയൻസിനെകുറിച്ചുള്ള നമ്മുടെ ധാരണ തെറ്റാണ്! | Fermi Paradox Explained","165k","3 mo ago",2],
+["നമ്മൾ ഒന്നിലും തൊടുന്നില്ല? ബ്ലാക്ക് ഹോൾ രഹസ്യവും ചന്ദ്രശേഖർ ലിമിറ്റും","101k","3 mo ago",2],
+["മറ്റ് 4 മനുഷ്യ വർഗങ്ങൾക്ക് എന്ത് സംഭവിച്ചു? | Out of Africa: The Survival Mystery","220k","4 mo ago",3],
+["നൊബേൽ സമ്മാനം നേടിയ ഈ മനോഹര മത്സ്യം പ്രകൃതിക്ക് ശാപമാകുന്നു! Glow Fish","137k","4 mo ago",1],
+["ശാസ്ത്രം തെളിയിച്ച പ്രേതങ്ങളുടെ സത്യം","145k","4 mo ago",4],
+["JWST കണ്ടെത്തിയ പ്രപഞ്ചത്തിന്റെ ഞെട്ടിക്കുന്ന രഹസ്യം | Cosmic Web | JWST Discovery","111k","4 mo ago",2],
+["തിമിംഗല കൂട്ടമരണവും ബഹിരാകാശ വളയങ്ങളും തമ്മിലെ രഹസ്യം | Chatham Rise Mystery","90k","4 mo ago",4],
+["രാത്രി ആകാശത്ത് നിങ്ങൾ കാണുന്നത് സത്യമല്ല! | Milky Wayയുടെ മറഞ്ഞ 100 രഹസ്യങ്ങൾ","506k","5 mo ago",2],
+["ചൊവ്വയിൽ മനുഷ്യശരീരം അതിജീവിക്കില്ല? | Mars Mission-ന്റെ ഞെട്ടിക്കുന്ന സത്യം","145k","5 mo ago",2],
+["ഭൂമി മാത്രം! പ്രപഞ്ചത്തിൽ എവിടെയും തീ ഇല്ലാത്തതെന്ത്? | Why Fire Cannot Exist in Space","149k","5 mo ago",2],
+["ഒരു കൂൺ ആണോ മനുഷ്യ ബുദ്ധി ഉണ്ടാക്കിയത്? | Stoned Ape Theory Explained | Malayalam","173k","5 mo ago",3],
+["പ്രപഞ്ച സത്യത്തെ കുറിച്ചുള്ള ഹോക്കിങ്ന്റെ അവസാന പ്രബന്ധം | Hawking's Last Theory","257k","5 mo ago",2],
+["വെറും 350 കോടി വർഷം കൊണ്ട് ജീവൻ എങ്ങനെ ഉണ്ടായി | How Life Formed ? | Malayalam","190k","6 mo ago",3],
+["ഭൂമിയുടെ ജനനം - നിങ്ങൾ പഠിച്ചതെല്ലാം തെറ്റാണ് | JR Studio | Malayalam","194k","6 mo ago",0],
+["ഇന്ത്യയെ സമ്പന്നമാക്കാൻ പോകുന്ന അത്ഭുത നിധി | Thorium Power | JR Studio | Malayalam","460k","6 mo ago",5],
+["അസാധ്യമായ തിമിംഗല പരിണാമം | Whale Evolution Explained | Malayalam","322k","7 mo ago",1],
+["40 മിനിറ്റ് പൂർണ്ണ നിശബ്ദത! ബഹിരാകാശയാത്രികർക്ക് എന്ത് സംഭവിച്ചു? | Artemis 2 Return Explained","67k","7 mo ago",2],
+["ചൊവ്വയിൽ -90°C അതിജീവിച്ച ഹെലികോപ്റ്റർ | ഭൗതികശാസ്ത്രത്തെ വെല്ലുവിളിച്ച Ingenuity","73k","7 mo ago",2],
+["50 വർഷം പഴക്കമുള്ള എൻജിനുകൾ, 400 കോടി ഡോളർ ചെലവ്! | Artemis 2: ചരിത്രമോ, പാഴ്ചെലവോ?","76k","7 mo ago",2],
+["പ്രപഞ്ചത്തിലെ ആദ്യ നക്ഷത്രം ജനിച്ചത് എങ്ങനെ? | The First Star in the Universe | Malayalam","580k","7 mo ago",2],
+["ബട്ടർഫ്ലൈ ഇഫക്ട്: ഫുട്ബോൾ ചരിത്രം മാറ്റിയ ശാസ്ത്ര തിയറി | Chaos Theory Explained","33k","7 mo ago",5],
+["MRI മെഷീൻ നിലയ്ക്കും! ഭൂമിയിൽ നിന്ന് അപ്രത്യക്ഷമാകുന്ന ഹീലിയം | Helium Crisis Explained","86k","8 mo ago",5],
+["ലോകത്തിലെ ആദ്യ AI ഇതായിരുന്നു! ആലൻ ടൂറിങ്ഗ് നാസികളുടെ കോഡ് തകർത്ത വിധം | Enigma Machine Explained","67k","8 mo ago",5],
+["നിങ്ങളുടെ ശരീരം ഇപ്പോഴും കല്ലുയുഗത്തിലാണ്! | Evolutionary Mismatch","72k","8 mo ago",3],
+["മനുഷ്യനും പർവ്വതത്തിനും ഒരു ഉയരപരിധിയുണ്ട് - എന്തുകൊണ്ട്? | The Physics of Height Explained","125k","8 mo ago",3],
+["മരങ്ങൾക്ക് ബുദ്ധി ഉണ്ടോ?","60k","9 mo ago",1],
+["നായ്ക്കളുടെ അത്ഭുതകരമായ പരിണാമ ചരിത്രം | Wolf to Dog Evolution","76k","9 mo ago",1],
+["പ്രപഞ്ചത്തിന് മുമ്പ് എന്തായിരുന്നു? ബിഗ്ബാങ്ങിന്റെ ഞെട്ടിക്കുന്ന സത്യം | Big Bang Explained","177k","9 mo ago",2],
+["ക്രോപ്പ് സർക്കിൾ: ശാസ്ത്രം പറയുന്ന സത്യം | Crop Circle Truth Explained","60k","9 mo ago",4],
+["കടൽ വിഴുങ്ങിയ നിഗൂഢ ഭൂഖണ്ഡം | Lost Continent Explained | Malayalam","1100k","9 mo ago",0],
+["ഒരു 'ബഗ്' മനുഷ്യനെ ദൈവമാക്കി മാറ്റിയോ? | Cognitive Revolution Explained | Malayalam","361k","9 mo ago",3],
+["ഭൂമിയെ രണ്ടു അന്യഗ്രഹങ്ങളാക്കുന്ന അദൃശ്യ രേഖ | Wallace Line Explained | Malayalam","560k","10 mo ago",0],
+["ജെയിംസ് വെബ്ബിന്റെ പുതിയ ഡാറ്റ കണ്ടെത്തിയ പ്രപഞ്ച കഥ | Cosmic Calendar Explained","308k","10 mo ago",2],
+["അപകടം വിളിച്ചു വരുത്തുന്ന ഒരു കാര്യം സംഭവിച്ചു കഴിഞ്ഞു | Arecibo Message Explained","543k","10 mo ago",4],
+["മനുഷ്യൻ ഒരു മിസ്റ്റേക്ക് ആയിരുന്നുവോ? Homo Sapiens Explained In Malayalam","467k","10 mo ago",3],
+["‘ടൈറ്റാനിക്കി’ നെ രക്ഷിച്ച രഹസ്യ ഭാഷ | Morse code explained | Malayalam","117k","10 mo ago",4],
+["അമേരിക്കൻ ഭൂഖണ്ഡങ്ങൾ മുഴുവൻ ഈച്ച ഫാക്ടറി ഉണ്ടാക്കുന്നതെന്തിന്? | JRExtra Mysteries","314k","11 mo ago",1],
+["പുതിയ കണ്ടെത്തലുകൾ ഞെട്ടിക്കും ? | JRDebunks | Malayalam","375k","11 mo ago",4],
+["Schrödinger Cat : ഈ പ്രപഞ്ചം നമ്മൾ നോക്കുമ്പോൾ മാത്രം രൂപപ്പെടുന്ന ഒരു മായാലോകമാണോ?","236k","11 mo ago",5],
+["നൊബേൽ സമ്മാനം വിൽക്കാൻ വെക്കേണ്ട ഗതികേട് ഉണ്ടായി | JRExtra Mysteries","102k","11 mo ago",4],
+["എന്തിനോ വേണ്ടി അലയുകയാണോ വോയേജർ? | JRExtra Mysteries | Malayalam","400k","11 mo ago",2],
+["നമ്മുടെ അയൽക്കാരനായ “നരക” ലോകത്തെ റഷ്യ കീഴടക്കിയപ്പോൾ !! | JRExtra Mysteries","274k","11 mo ago",2],
+["പരിണാത്തിന്റെ തെളിവ്. ഒന്നല്ല ഒരു കുന്നോളം | JRSapiens | Malayalam","207k","1 yr ago",3],
+["ഈജിപ്തിൽ കണ്ടെത്തിയ ഏലിയൻ പാത്രങ്ങളോ? തള്ളിന്റെ പിന്നിലെ സത്യം | JRDubunks","163k","1 yr ago",4],
+["പുതിയ സമുദ്രങ്ങൾ ഉണ്ടാകുന്ന വിധം | JRFactverse | Malayalam","242k","1 yr ago",0],
+["അന്യഗ്രഹ ജീവികളെ പോലും വെല്ലുന്ന ആക്രമണകാരി | Jelly Fish Explained | JRAtmos","185k","1 yr ago",1],
+["നരകത്തിൽ നിന്നും സസ്തനികൾ ഭൂമി കീഴടക്കിയതെങ്ങനെ? | JRSapiens | Malayalam","471k","1 yr ago",1],
+["അജ്ഞാത പാറക്കഷ്ണം പഠിച്ചേ മതിയാകൂ എന്ന് നാസ | 3I / Atlas | JRExtra Mysteries","230k","1 yr ago",2],
+["പ്രപഞ്ചത്തിൽ 99% ശൂന്യ സ്ഥലമാണ്. | JRFactverse | Malayalam","140k","1 yr ago",2],
+["ബിഗ്ബാങ്ങിന്റെ ശബ്ദം മുതൽ മമ്മിയുടെ സ്വരം വരെ നമുക്കറിയാം പക്ഷെ.. | JRFactverse","223k","1 yr ago",2],
+["ദിനോസറുകളുടെ നരകതുല്യമായ അന്ത്യം | JRSapiens | Malayalam","657k","1 yr ago",1],
+["യുക്തിയെ തിരുത്തി ക്വാണ്ടം ലോകത്തെ കമ്പ്യൂട്ടറിലെത്തിച്ചു | Physics Nobel 2025 | JRExtra","247k","1 yr ago",5],
+["നമുക്ക് കാണാൻ ഭാഗ്യമില്ലാത്ത ഭാവിയിലെ സംഭവങ്ങൾ | JRFactverse | Malayalam","409k","1 yr ago",2],
+["ബെർമുഡ ട്രയാംഗിൾ : രഹസ്യങ്ങളുടെ ചുരുളഴിയുന്നു | JRDebunks | Malayalam","160k","1 yr ago",4],
+["ഒരു രാജ്യത്തെ ജീവൻ മറ്റൊരിടത്തെ ദുരന്തമാണ് ? | JRAtmos | Malayalam","113k","1 yr ago",0],
+["ഭൂമിക്കുള്ളിലെ ഞെട്ടിക്കുന്ന അന്യഗ്രഹങ്ങൾ.. | JRFactverse | Malayalam","185k","1 yr ago",0],
+["ലോകത്തിലെ ഏറ്റവും വലിയ ക്യാമറ, ദിവസം 1 കോടി അലെർട്ടുകൾ ! | JRExtra Mysteries","195k","1 yr ago",5],
+["അതീവരഹസ്യമായി തലയ്ക്കു മുകളിൽ ഇവർ ചെയ്യുന്നത് !! Spy Planes | Malayalam","71k","1 yr ago",5],
+["കൂറ്റൻ ബോംബിനേക്കാൾ വലിയ അപകടകാരി | Fibre Drones Explained | Malayalam","65k","1 yr ago",5],
+["ഏരിയ 51 - രഹസ്യങ്ങളുടെ ചുരുളഴിക്കുന്നു | JR Studio Malayalam","254k","1 yr ago",4],
+["സത്യത്തിൽ ചന്ദ്രനിൽ നമ്മൾ വെള്ളം കണ്ടെത്തിയിരുന്നോ? | Malayalam","60k","1 yr ago",2],
+["ഏറ്റവും കൂടുതൽ ചതിക്കപ്പെട്ട മഹാപ്രതിഭ | Nicola Tesla | Malayalam","141k","1 yr ago",5],
+["സൂര്യന് മുന്നേ ജനിച്ച ഒരജ്ഞാതൻ ഭൂമിയിലേക്ക് | Malayalam","142k","1 yr ago",2],
+["What is Theory of Relativity FULL COURSE In Malayalam | JR Studio Malayalam","175k","1 yr ago",5],
+["Confusing ideas about reality and world | Malayalam","82k","1 yr ago",5],
+["നിങ്ങൾക്കും ഇങ്ങനെ പ്രവചിക്കാനാകുമോ? | Malayalam","31k","1 yr ago",4],
+["The Story Of Neanderthals | Full genetic map and evidences | Malayalam","249k","1 yr ago",3],
+["പഴയ രാജക്കന്മാരുടെ ഇരട്ടി ആയുസ്സുണ്ട് ഇന്നൊരു സാധാരണക്കാരന്.. | Malayalam","36k","1 yr ago",3],
+["മൂന്നാം ലോക മഹായുദ്ധത്തിനു തൊട്ടടുത്ത് എത്തിച്ച പ്രക്രിയ | Malayalam","224k","1 yr ago",5],
+["ഭൂമി തുളക്കുന്ന ബോംബുകളുടെ പ്രവർത്തനം | Bunker Buster Bombs malayalam","358k","1 yr ago",5],
+["സത്യം പറയൂ, ഈ മൂന്ന് പേരെ നിങ്ങൾ വിശ്വസിക്കുമോ? | Malayalam","157k","1 yr ago",4],
+["ടൈം ഡയലേഷനും പിരമിഡിന്റെ അറകളും കണ്ടെത്തിയ പ്രേതകണം | Malayalam","149k","1 yr ago",4],
+["വിമാനയാത്ര : കേട്ടുകേൾവിയില്ലാത്ത സത്യങ്ങൾ | Malayalam","160k","1 yr ago",4],
+["Gold is Leaking from Earth Interior | Malayalam","56k","1 yr ago",0],
+["സോഡിയം ബാറ്ററികൾ ചൈനീസ് ആധിപത്യം ഇല്ലാതാകുമോ? | Malayalam","169k","1 yr ago",5],
+["ഭൂമിയുടെ കറക്കവും വിമാനം പറക്കലും | Malayalam","903k","1 yr ago",0],
+["ക്ലോക്കുകളെ മറികടക്കുന്ന മറ്റൊരു ഇന്ദ്രിയം നമുക്കുണ്ടോ? | Malayalam","50k","1 yr ago",3],
+["നിങ്ങൾ ഉദ്ദേശിക്കുന്ന കാരണം കൊണ്ടല്ല ചൂടും മഞ്ഞു വീഴ്ചയും ഉണ്ടാകുന്നത് | Malayalam","120k","1 yr ago",0],
+["ജെയിംസ് വെബ്ബിന് വഴികാട്ടിയവൻ ഗയ യാത്രയായി | Malayalam","83k","1 yr ago",2],
+["ഏതു മടയിലും കേറിയടിക്കുന്ന ഇന്ത്യൻ മിസൈൽ | Brahmos Explained | Malayalam","562k","1 yr ago",5],
+["ഒരു അന്യഗ്രഹഭൂമി തൊട്ടടുത്തുണ്ട് | Terraforming of Mars Explained | Malayalam","282k","1 yr ago",2],
+["S-400 വിചാരിച്ചതിനേക്കാളും കോംപ്ലക്സ് ആണ്. ഒരത്ഭുതം | Malayalam","625k","1 yr ago",5],
+["ശത്രുവിന്റെ സകലതും ഇന്ത്യ ചോർത്തുന്ന സ്‌പൈ സാറ്റലൈറ്റ്സ് | Malayalam","291k","1 yr ago",5],
+["സത്യം ഇതാണ് | ജലയുദ്ധം നമ്മൾ വിചാരിക്കുന്ന പോലെയല്ല | Malayalam","255k","1 yr ago",0],
+["വീട്ടുമുറ്റത്തു വൈദ്യുതി ഉണ്ടാക്കാം. അതും അണവ നിലയം | Malayalam","81k","1 yr ago",5],
+["ലോകത്ത് ഇങ്ങനെ ഒരു ഞെട്ടിപ്പിക്കുന്ന മരം ആദ്യം | Malayalam","136k","1 yr ago",1],
+["വെറും 124 പ്രകാശ വർഷമകലെ പോയി താമസിക്കാം? K2-18b Planet | Malayalam","312k","1 yr ago",2],
+["Dire Wolf പുനർജനിച്ചോ അതോ തള്ളോ? | Malayalam","103k","1 yr ago",1],
+["കടലിന്റെ 5% പോലും explore ചെയ്യാത്തത് ഇത് കൊണ്ടാണ് | Malayalam","324k","1 yr ago",0],
+["ബംങ്കറുകൾ തകർക്കുന്ന അമേരിക്കയുടെ ബ്രഹ്മാസ്ത്രം | B2 Bomber | Malayalam","412k","1 yr ago",5],
+["500 കോടി മനുഷ്യരെ രക്ഷിച്ചു 10 കോടിയെ കൊന്ന നോബൽ ജേതാവ് | Malayalam","73k","1 yr ago",5],
+["പരിണാമത്തിന്റെ ഏറ്റവും വലിയ തെളിവ് | Malayalam","125k","1 yr ago",3],
+["പിരമിഡിനടിയിൽ എട്ടുതൂണുകളും 2 കിലോമീറ്റർ താഴ്ചയിൽ അറകളും | Latest Findings","154k","1 yr ago",4],
+["പിരമിഡ് ഉണ്ടാക്കുമ്പോൾ ഭൂമിയിൽ മാമത്തുകൾ ഉണ്ടായിരുന്നു | Malayalam","125k","1 yr ago",4],
+["ചന്ദ്രനിലേക്ക് പോകുന്ന പേടകങ്ങൾക്ക് ഇതെന്തുപറ്റി? | Malayalam","39k","1 yr ago",2],
+["വിക്ഷേപിക്കുന്നതിനേക്കാൾ ഭീകരമാണ് തിരിച്ചിറക്കൽ എന്ന പ്രോസസ്സ്..","340k","1 yr ago",2],
+["ഭൂമിക്കു പുറത്തു എപ്പോഴേ ജീവനുണ്ട്.. പക്ഷെ | Malayalam","109k","1 yr ago",2],
+["സുനിത വില്യംസിനു തിരിച്ചു വന്നാലും കാര്യങ്ങൾ എളുപ്പമല്ല | Malayalam","219k","1 yr ago",2],
+["ഈ ഒരു കാര്യം മനുഷ്യനെ വ്യത്യസ്തനാക്കും, അത് എലികൾക്ക് കൊടുത്താലോ??","28k","1 yr ago",3],
+["15 ലക്ഷം കിലോമീറ്റർ നീളത്തിൽ വയർ, അതും കടലിലൂടെ | Malayalam","105k","1 yr ago",5],
+["ഇതൊക്കെ തരുന്ന സൂചന ഭയപ്പെടുത്തുന്നതാണോ | Anglerfish Explained Malayalam","188k","1 yr ago",1],
+["ഈ ഉപകരണം അക്കാലത്ത് ഉണ്ടാകാൻ വഴിയില്ല | Antikythera Mechanism Explained Malayalam","430k","1 yr ago",5],
+["നമ്മളീ കാണുന്നത് ഒന്നും സത്യമല്ല | ഒരു നേർരേഖ പോലും Malayalam","103k","1 yr ago",3],
+["പ്രപഞ്ചത്തിൽ നമ്മളൊന്നുമല്ല | Largest Structure in the Universe Malayalam","233k","1 yr ago",2],
+["മനുഷ്യരെ ഭക്ഷിക്കുന്ന ഗോത്രങ്ങൾ ഉണ്ടെന്നു പറയുന്നുണ്ട് | ആമസോൺ Forest","410k","1 yr ago",4],
+["ചൊവ്വയിലെ പിരമിഡും വിചിത്രമായ രൂപങ്ങളും | Images from Mars Malayalam","75k","1 yr ago",2],
+["കാത്തിരിക്കുന്നത് മറ്റൊരു ദുരന്തമോ | AMOC Explained Malayalam","105k","1 yr ago",0],
+["ദിനോസറിനോടൊപ്പം നടന്ന ജീവി ഇപ്പോൾ മനുഷ്യനെ രക്ഷിക്കുന്നു | Malayalam","53k","1 yr ago",1],
+["ജീവൻ ഭൂമിയിൽ ഉണ്ടായതല്ല | പുതിയ കണ്ടെത്തൽ Malayalam","195k","1 yr ago",2],
+["ഇനി Deepseek ലോകക്രമം മാറ്റിയെടുക്കും | DeepSeek Explained Malayalam","101k","1 yr ago",5],
+["രണ്ടു കുടുംബത്തെ നശിപ്പിച്ച അശ്രദ്ധ | Kramatorsk Accident Malayalam","33k","1 yr ago",5],
+["How something came from nothing? | Malayalam","204k","1 yr ago",2],
+["ഭൂമി തുരക്കുന്ന അത്ഭുത ഉപകരണം | Tunnel Boring Machine Malayalam","49k","1 yr ago",5],
+["ലോകത്തിന്റെ അതിര് നിങ്ങൾ ആലോചിച്ചതല്ല | Planck Length Malayalam","72k","1 yr ago",5],
+["സൂര്യനിലേക്ക് ഇടിച്ചു കയറി അത്ഭുതമായി | Parker Solar Probe Malayalam","141k","1 yr ago",2],
+["2025-ൽ ISRO ഉൾപ്പെടെ കാത്തിരിക്കുന്നത് വമ്പൻ പദ്ധതികൾ | Malayalam","32k","1 yr ago",2],
+["ഗൾഫിനെ കടത്തി വെട്ടാൻ ഗ്രീൻലാൻഡ് | പുതിയ കപ്പൽ പാത വരുന്നു | Malayalam","174k","1 yr ago",0],
+["മരണത്തെയും രോഗത്തെയും തോൽപ്പിക്കാൻ ശാസ്ത്രം...","50k","1 yr ago",3],
+["ഗൂഗിൾ പറയുന്ന സമാന്തര പ്രപഞ്ചങ്ങളും ക്വാണ്ടം ചിപ്പും !","54k","1 yr ago",5],
+["റഷ്യൻ വാക്‌സിൻ ; ആരുമെന്താ ക്യാൻസറിനു മരുന്ന് കണ്ടുപിടിക്കാത്തത് ?","306k","1 yr ago",3],
+["ടൈറ്റാനിക്കിനെ മുക്കിയ മഞ്ഞ് പാളിയേക്കാൾ പതിനായിരം മടങ്ങ് വലിപ്പം","501k","1 yr ago",0],
+["ഞെട്ടിക്കുന്ന വില്ലോ ചിപ്പുമായി ഗൂഗിൾ, ഇനി കളി മാറും !","261k","1 yr ago",5],
+["ലാബിൽ വളർത്തിയ ഇറച്ചി അഥവാ Cultivated Meat","48k","1 yr ago",5],
+["കൊച്ചിയും തിരുവനന്തപുരവും മുംബൈയും ഒക്കെ മുങ്ങും !","207k","1 yr ago",0]
+];
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nf=new Intl.NumberFormat('en-IN');
+const fmt=n=>nf.format(Math.round(n||0));
+const p2=n=>String(n).padStart(2,'0');
+const ymd=x=>x.getFullYear()+'-'+p2(x.getMonth()+1)+'-'+p2(x.getDate());
+const todayStr=()=>ymd(new Date());
+const addDays=(d,n)=>{const x=new Date(d+'T00:00:00');x.setDate(x.getDate()+n);return ymd(x);};
+const uid=()=>Math.random().toString(36).slice(2,9);
+const monthLabel=mk=>{const [y,m]=mk.split('-').map(Number);return new Date(y,m-1,1).toLocaleString('en-US',{month:'long',year:'numeric'});};
+const shiftMonth=(mk,n)=>{const [y,m]=mk.split('-').map(Number);const x=new Date(y,m-1+n,1);return x.getFullYear()+'-'+p2(x.getMonth()+1);};
+const pct=x=>(x*100).toFixed(1)+'%';
+
+function parseViews(s){
+  const m=String(s).trim().match(/^([\d.,]+)\s*([kKmM]?)$/); if(!m) return 0;
+  const n=parseFloat(m[1].replace(/,/g,''));
+  return Math.round(n*(/k/i.test(m[2])?1e3:/m/i.test(m[2])?1e6:1));
+}
+function ageToDate(age){
+  const m=String(age).match(/(\d+)\s*(sec|min|hour|hr|day|week|wk|month|mo|year|yr)/i);
+  if(!m) return ANCHOR;
+  const n=+m[1], u=m[2].toLowerCase();
+  let d;
+  if(/^(sec|min|hour|hr)/.test(u)) d=0;
+  else if(/^day/.test(u)) d=n;
+  else if(/^(week|wk)/.test(u)) d=n*7;
+  else if(/^(month|mo)/.test(u)) d=n*30;
+  else d=n*365;
+  return addDays(ANCHOR,-d);
+}
+function seed(){
+  return {
+    defaultGoal:30, goals:{}, catGoals:{},
+    categories:CATS.map((n,i)=>({id:'c'+i,name:n})),
+    videos:LISTING.map(([t,v,age,ci],i)=>({id:'v'+i,title:t,link:'',views:parseViews(v),date:ageToDate(age),cat:'c'+ci,monthly:{}}))
+  };
+}
+function load(){
+  let s=null;
+  try{s=JSON.parse(localStorage.getItem(KEY));}catch(e){}
+  if(!(s&&Array.isArray(s.categories)&&Array.isArray(s.videos))) s=seed();
+  if(s.defaultGoal==null) s.defaultGoal=30;
+  s.goals=s.goals||{}; s.catGoals=s.catGoals||{};
+  s.videos.forEach(v=>{v.monthly=v.monthly||{};});
+  return s;
+}
+let state=load();
+function save(){
+  state.updatedAt=Date.now();
+  try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){alert('Could not save: '+e.message);}
+  queuePush();
+}
+let mon=todayStr().slice(0,7);
+let editingId=null;
+
+function ytId(s){
+  s=(s||'').trim(); if(!s) return '';
+  if(/^[\w-]{11}$/.test(s)) return s;
+  const m=s.match(/(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([\w-]{11})/); return m?m[1]:'';
+}
+function linkOf(v){return v.link?(v.link.startsWith('http')?v.link:'https://'+v.link):'';}
+function thumbOf(v){const id=ytId(v.link);return id?`https://i.ytimg.com/vi/${id}/mqdefault.jpg`:'';}
+
+/* ---------- numbers ---------- */
+function stats(){
+  const total=state.videos.length;
+  const allViews=state.videos.reduce((a,v)=>a+(+v.views||0),0);
+  const overallAvg=total?allViews/total:0;
+  const rows=state.categories.map(c=>{
+    const vs=state.videos.filter(v=>v.cat===c.id);
+    const views=vs.reduce((a,v)=>a+(+v.views||0),0);
+    return {c,n:vs.length,views,avg:vs.length?views/vs.length:0};
+  });
+  const sumAvg=rows.reduce((a,r)=>a+r.avg,0);
+  rows.forEach(r=>{
+    const share=total?r.n/total:0;
+    r.perf=sumAvg?r.avg/sumAvg:0;
+    r.suggested=Math.round(total*r.perf);
+    r.gap=r.suggested-r.n;
+    r.ratio=(share>0&&overallAvg>0)?(r.avg/overallAvg)/(share*rows.length):0;
+    r.lacking=r.n>0&&r.ratio>=1.2;
+    r.performing=r.n>0&&r.avg>=overallAvg;
+  });
+  rows.filter(r=>r.n).sort((a,b)=>b.avg-a.avg).forEach((r,i)=>r.rank=i+1);
+  return {rows,total,allViews,overallAvg};
+}
+function goalFor(mk){return state.goals[mk]!=null?state.goals[mk]:state.defaultGoal;}
+function catTargetFor(mk,catId){const m=state.catGoals[mk]||{};return m[catId]!=null?m[catId]:null;}
+function pacing(mk){
+  const goal=goalFor(mk);
+  const sRows=stats().rows;
+  const pub=state.videos.filter(v=>(v.date||'').slice(0,7)===mk);
+  const rows=state.categories.map(c=>{
+    const sr=sRows.find(r=>r.c.id===c.id)||{perf:0};
+    const cnt=pub.filter(v=>v.cat===c.id).length;
+    const set=catTargetFor(mk,c.id);
+    const target=set!=null?set:Math.round(goal*sr.perf);
+    return {c,cnt,target,need:Math.max(0,target-cnt),auto:set==null};
+  });
+  return {goal,published:pub.length,rows};
+}
+
+/* ---------- overview ---------- */
+function renderOverview(){
+  const {rows,total,allViews,overallAvg}=stats();
+  const lacking=rows.filter(r=>r.lacking).sort((a,b)=>b.ratio-a.ratio);
+  const perf=rows.filter(r=>r.performing).sort((a,b)=>b.avg-a.avg);
+  $('kpis').innerHTML=[[fmt(total),'Videos'],[fmt(allViews),'Total views'],[fmt(overallAvg),'Average views per video'],[lacking.length,'Categories lacking videos']]
+    .map(([v,l])=>`<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join('');
+  $('lackBox').innerHTML='<b>Lacking: add more videos</b><br>'+(lacking.length?lacking.map(r=>`${esc(r.c.name)} (${r.n} videos, ${fmt(r.avg)} avg)`).join('<br>'):'None right now.');
+  $('perfBox').innerHTML='<b>Performing: at or above average</b><br>'+(perf.length?perf.map(r=>`${esc(r.c.name)} (${fmt(r.avg)} avg)`).join('<br>'):'None yet.');
+  const sorted=[...rows].sort((a,b)=>(a.rank??99)-(b.rank??99)||b.avg-a.avg);
+  $('score').innerHTML=`<thead><tr><th>Rank</th><th>Category</th><th class=n>Videos</th><th class=n>Total views</th><th class=n>Avg / video</th><th class=n>Suggested videos</th><th class=n>Gap</th><th>Status</th></tr></thead><tbody>`+
+  sorted.map(r=>{
+    const st=r.lacking?'<span class="pill p-lack">Lacking: add more</span>':r.performing?'<span class="pill p-perf">Performing</span>':r.n?'<span class="pill p-ok">Below average</span>':'<span class="pill p-lack">No videos</span>';
+    const gap=r.gap>0?`<span class="bad">+${r.gap} needed</span>`:r.gap<0?`<span class="ok">${r.gap} extra</span>`:'—';
+    return `<tr><td>${r.rank??'—'}</td><td>${esc(r.c.name)}</td><td class=n>${r.n}</td><td class=n>${fmt(r.views)}</td><td class=n><b>${fmt(r.avg)}</b></td><td class=n>${r.suggested}</td><td class=n>${gap}</td><td>${st}</td></tr>`;
+  }).join('')+'</tbody>';
+  $('vCat').innerHTML=state.categories.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  if(!$('vDate').value) $('vDate').value=todayStr();
+  $('sections').innerHTML=state.categories.map(c=>{
+    const vs=state.videos.filter(v=>v.cat===c.id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const items=vs.map(v=>{
+      if(editingId===v.id) return editForm(v);
+      const url=linkOf(v), th=thumbOf(v);
+      const name=url?`<a href="${esc(url)}" target="_blank" rel="noopener">${esc(v.title)}</a>`:esc(v.title);
+      return `<div class="vid">${th?`<img src="${esc(th)}" alt="" loading="lazy">`:'<div></div>'}<div>${name}<div class="muted">${esc(v.date||'')} · ${fmt(v.views)} views${url?'':' · no link yet'}</div></div><span class="row"><button onclick="startEdit('${v.id}')">Edit</button><button class="danger" onclick="delVideo('${v.id}')">Delete</button></span></div>`;
+    }).join('');
+    return `<details class="cat" ${vs.length?'open':''}><summary>${esc(c.name)} <span class="muted">(${vs.length} videos)</span></summary>${items||'<p class="muted">No videos yet.</p>'}</details>`;
+  }).join('');
+}
+function editForm(v){
+  return `<div class="vid" style="grid-template-columns:1fr"><div class="row">
+    <input id="e_title" value="${esc(v.title)}" style="width:300px">
+    <input id="e_link" value="${esc(v.link||'')}" placeholder="YouTube link (optional)" style="width:260px">
+    <select id="e_cat">${state.categories.map(c=>`<option value="${c.id}" ${c.id===v.cat?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+    <input type="date" id="e_date" value="${esc(v.date||'')}">
+    <input type="number" id="e_views" value="${+v.views||0}" style="width:110px">
+    <button class="primary" onclick="saveEdit('${v.id}')">Save</button><button onclick="cancelEdit()">Cancel</button>
+  </div></div>`;
+}
+function startEdit(id){editingId=id;renderAll();}
+function cancelEdit(){editingId=null;renderAll();}
+function saveEdit(id){
+  const v=state.videos.find(x=>x.id===id); if(!v) return;
+  const title=$('e_title').value.trim(), link=$('e_link').value.trim();
+  if(!title) return alert('The video name cannot be empty.');
+  if(link&&!ytId(link)) return alert('That does not look like a YouTube link. Leave it empty or paste the full link.');
+  v.title=title; v.link=link; v.cat=$('e_cat').value;
+  v.date=$('e_date').value||v.date;
+  v.views=Number(String($('e_views').value).replace(/[, ]/g,''))||0;
+  editingId=null; save(); renderAll();
+}
+function addVideo(){
+  const link=$('vLink').value.trim(), title=$('vTitle').value.trim();
+  if(!title) return alert('Enter the video name.');
+  if(link&&!ytId(link)) return alert('That does not look like a YouTube link. Leave it empty or paste the full link.');
+  state.videos.push({id:uid(),title,link,views:Number(String($('vViews').value).replace(/[, ]/g,''))||0,date:$('vDate').value||todayStr(),cat:$('vCat').value,monthly:{}});
+  ['vLink','vTitle','vViews'].forEach(id=>$(id).value='');
+  save(); renderAll();
+}
+function delVideo(id){
+  const v=state.videos.find(x=>x.id===id); if(!v) return;
+  if(!confirm('Delete "'+v.title+'"?')) return;
+  state.videos=state.videos.filter(x=>x.id!==id); save(); renderAll();
+}
+
+/* ---------- monthly ---------- */
+function setMonth(mk){if(/^\d{4}-\d{2}$/.test(mk)){mon=mk;renderAll();}}
+function moveMonth(n){mon=shiftMonth(mon,n);renderAll();}
+function setMonthly(id,val){
+  const v=state.videos.find(x=>x.id===id); if(!v) return;
+  if(val===''||val==null) delete v.monthly[mon];
+  else v.monthly[mon]=Number(String(val).replace(/[, ]/g,''))||0;
+  save(); renderMonthly();
+}
+function renderMonthly(){
+  $('monLabel').textContent=monthLabel(mon);
+  $('monPick').value=mon;
+  const p=pacing(mon);
+  const pctDone=p.goal?Math.min(100,p.published/p.goal*100):0;
+  $('monGoal').innerHTML=`<div class="hd"><b>Videos published in ${monthLabel(mon)}</b><span>${p.published} / ${p.goal} goal · ${p.goal?Math.round(p.published/p.goal*100):0}%</span></div><div class="bg"><div class="fg" style="width:${pctDone}%"></div></div>
+    <div class="muted" style="margin-top:4px">${p.goal-p.published>0?(p.goal-p.published)+' more to reach the goal':'Goal reached'}</div>`;
+  $('monCats').innerHTML=`<thead><tr><th>Category</th><th class=n>Published</th><th class=n>Target</th><th class=n>Still needed</th></tr></thead><tbody>`+
+  p.rows.map(r=>`<tr><td>${esc(r.c.name)}${r.auto?'':' <span class="muted">(set target)</span>'}</td><td class=n>${r.cnt}</td><td class=n>${r.target}</td><td class=n><b class="${r.need>0?'bad':'ok'}">${r.need>0?'+'+r.need:'Done'}</b></td></tr>`).join('')+'</tbody>';
+  const prev=shiftMonth(mon,-1);
+  const vids=[...state.videos].sort((a,b)=>{const ca=state.categories.findIndex(c=>c.id===a.cat),cb=state.categories.findIndex(c=>c.id===b.cat);return ca-cb||(b.date||'').localeCompare(a.date||'');});
+  $('monVids').innerHTML=`<thead><tr><th>Video</th><th>Category</th><th class=n>${prev}</th><th class=n>${mon} views</th><th class=n>Change</th></tr></thead><tbody>`+
+  (vids.length?vids.map(v=>{
+    const cur=v.monthly[mon], pv=v.monthly[prev];
+    const ch=(cur!=null&&pv!=null)?cur-pv:null;
+    const cname=(state.categories.find(c=>c.id===v.cat)||{name:'—'}).name;
+    return `<tr><td>${esc(v.title)}</td><td class=muted>${esc(cname)}</td><td class=n>${pv!=null?fmt(pv):'—'}</td><td class=n><input type="number" min="0" value="${cur!=null?cur:''}" placeholder="views" onchange="setMonthly('${v.id}',this.value)" style="width:120px"></td><td class=n>${ch==null?'—':`<span class="${ch>=0?'ok':'bad'}">${ch>=0?'+':''}${fmt(ch)}</span>`}</td></tr>`;
+  }).join(''):'<tr><td colspan=5 class=muted>No videos yet.</td></tr>')+'</tbody>';
+}
+
+/* ---------- settings ---------- */
+function setDefaultGoal(v){const n=parseInt(v,10);if(n>=0){state.defaultGoal=n;save();renderAll();}}
+function setMonthGoal(v){const n=parseInt(v,10);if(n>=0){state.goals[$('setMonth').value]=n;save();renderAll();}}
+function clearMonthGoal(){delete state.goals[$('setMonth').value];save();renderAll();}
+function setCatTarget(catId,v){
+  const sm=$('setMonth').value; state.catGoals[sm]=state.catGoals[sm]||{};
+  if(v===''||v==null) delete state.catGoals[sm][catId];
+  else state.catGoals[sm][catId]=Math.max(0,parseInt(v,10)||0);
+  save(); renderAll();
+}
+function renderSettings(){
+  if(!$('setMonth').value) $('setMonth').value=mon;
+  const sm=$('setMonth').value;
+  $('setDefault').value=state.defaultGoal;
+  if(cfg()&&!$('cUrl').value) $('cUrl').value=cfg().url;
+  $('setMonthGoal').value=state.goals[sm]!=null?state.goals[sm]:'';
+  $('setMonthGoal').placeholder='default '+state.defaultGoal;
+  $('setCats').innerHTML=`<thead><tr><th>Category</th><th class=n>Target for ${monthLabel(sm)}</th></tr></thead><tbody>`+
+  state.categories.map(c=>{const t=catTargetFor(sm,c.id);return `<tr><td>${esc(c.name)}</td><td class=n><input type="number" min="0" value="${t!=null?t:''}" placeholder="auto" onchange="setCatTarget('${c.id}',this.value)" style="width:110px"></td></tr>`;}).join('')+'</tbody>';
+  $('catList').innerHTML=state.categories.map(c=>{const n=state.videos.filter(v=>v.cat===c.id).length;return `<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0"><span><b>${esc(c.name)}</b> <span class=muted>${n} videos</span></span><span><button onclick="renCat('${c.id}')">Rename</button> <button class=danger onclick="delCat('${c.id}')">Delete</button></span></div>`;}).join('');
+}
+function addCat(){
+  const name=$('newCat').value.trim(); if(!name) return;
+  if(state.categories.some(c=>c.name.toLowerCase()===name.toLowerCase())) return alert('That category already exists.');
+  state.categories.push({id:'c'+uid(),name}); $('newCat').value=''; save(); renderAll();
+}
+function renCat(id){
+  const c=state.categories.find(x=>x.id===id); if(!c) return;
+  const name=(prompt('Rename category:',c.name)||'').trim(); if(!name) return;
+  c.name=name; save(); renderAll();
+}
+function delCat(id){
+  const c=state.categories.find(x=>x.id===id); if(!c) return;
+  const n=state.videos.filter(v=>v.cat===id).length;
+  if(n) return alert(`"${c.name}" still has ${n} video(s). Move or delete them first.`);
+  if(!confirm('Delete category "'+c.name+'"?')) return;
+  state.categories=state.categories.filter(x=>x.id!==id); save(); renderAll();
+}
+
+/* ---------- cloud sync (Supabase, one shared row) ---------- */
+const CLOUD_KEY='basic-cloud-config';
+function cfg(){try{return JSON.parse(localStorage.getItem(CLOUD_KEY))||null;}catch(e){return null;}}
+function setCloudMsg(t){const el=$('cloudMsg'); if(el) el.textContent=t;}
+// legacy anon keys (eyJ...) are also sent as a Bearer token; publishable keys (sb_publishable_...) are sent only as apikey
+function hdr(c){const h={apikey:c.key}; if(/^eyJ/.test(c.key)) h.Authorization='Bearer '+c.key; return h;}
+async function cloudPull(c){
+  const r=await fetch(`${c.url}/rest/v1/tracker_state?id=eq.main&select=data`,{headers:hdr(c)});
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const rows=await r.json();
+  return rows[0]?rows[0].data:null;
+}
+async function cloudPush(c){
+  const r=await fetch(`${c.url}/rest/v1/tracker_state?on_conflict=id`,{method:'POST',headers:{...hdr(c),'Content-Type':'application/json',Prefer:'resolution=merge-duplicates'},body:JSON.stringify([{id:'main',data:state}])});
+  if(!r.ok) throw new Error('HTTP '+r.status+' '+(await r.text()));
+}
+let pushTimer=null;
+function queuePush(){
+  const c=cfg(); if(!c) return;
+  clearTimeout(pushTimer);
+  pushTimer=setTimeout(async()=>{
+    try{await cloudPush(c); setCloudMsg('Saved online at '+new Date().toLocaleTimeString());}
+    catch(e){setCloudMsg('Online save failed: '+e.message);}
+  },600);
+}
+async function initCloud(){
+  const c=cfg(); if(!c) return setCloudMsg('Not connected. Add the Project URL and key in Settings.');
+  try{
+    const remote=await cloudPull(c);
+    if(remote&&(remote.updatedAt||0)>(state.updatedAt||0)){
+      state=remote; localStorage.setItem(KEY,JSON.stringify(state)); renderAll();
+      setCloudMsg('Loaded the latest data from online storage.');
+    }else{
+      await cloudPush(c);
+      setCloudMsg(remote?'Synced: this device is the latest.':'Created the online copy.');
+    }
+  }catch(e){setCloudMsg('Could not reach online storage: '+e.message);}
+}
+async function saveCloudConfig(){
+  const url=$('cUrl').value.trim().replace(/\/+$/,''), key=$('cKey').value.trim();
+  if(!/^https:\/\/[a-z0-9]+\.supabase\.co$/i.test(url)) return alert('Paste the Project URL from Supabase, like https://abcd1234.supabase.co');
+  if(!key) return alert('Paste the anon public key from Supabase.');
+  localStorage.setItem(CLOUD_KEY,JSON.stringify({url,key}));
+  $('cKey').value='';
+  await initCloud();
+}
+function disconnectCloud(){
+  localStorage.removeItem(CLOUD_KEY); $('cUrl').value='';
+  setCloudMsg('Disconnected. Data stays on this device only.');
+}
+
+/* ---------- tabs ---------- */
+function showTab(t){
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.id==='t-'+t));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  renderAll();
+}
+function renderAll(){
+  renderOverview(); renderMonthly(); renderSettings();
+}
+renderAll();
+initCloud();
+</script>
+</body>
+</html>
